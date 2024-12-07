@@ -131,6 +131,8 @@ ovs-docker add-port ovs1 ovs1onos onos  --ipaddress=192.168.100.2/24
 ovs-docker add-port ovs1 ovs1R1_R1onos R1  --ipaddress=192.168.100.3/24
 # R1 to vxlan
 ovs-vsctl add-port ovs2 wg0 -- set interface wg0 type=vxlan options:remote_ip=192.168.60.82
+ovs-docker add-port ovs1 ovs1R1_vxlan R1 --ipaddress=192.168.70.82/24   
+
 # onos to ovs1 and ovs2
 ovs-vsctl set bridge ovs1 protocol=OpenFlow14
 ovs-vsctl set-controller ovs1 tcp:127.0.0.1:6653
