@@ -105,8 +105,8 @@ function soft_link {
 # ROUTERIMAGE="sdnfv-final-frr"
 
 # Build host base image
-# docker build containers/host -t "$HOSTIMAGE"
-# docker build containers/frr -t "$ROUTERIMAGE"
+# docker build /home/sdn/Desktop/fin/313552034_fin/supplement/containers/host -t "$HOSTIMAGE"
+# docker build /home/sdn/Desktop/fin/313552034_fin/supplement/containers/frr -t "$ROUTERIMAGE"
 
 # TODO Write your own code
 soft_link h1
