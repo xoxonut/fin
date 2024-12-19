@@ -130,7 +130,8 @@ ovs-docker add-port ovs1 ovs1h1_h1R1 R1 --ipaddress=172.16.82.69/24
 ovs-docker add-port ovs1 ovs1onos onos  --ipaddress=192.168.100.2/24
 ovs-docker add-port ovs1 ovs1R1_R1onos R1  --ipaddress=192.168.100.3/24
 # R1 to vxlan
-ovs-vsctl add-port ovs2 wg0 -- set interface wg0 type=vxlan options:remote_ip=192.168.60.82
+ovs-vsctl add-port ovs2 wg0 -- set interface wg0 type=vxlan options:remote_ip=192.168.60.82 \
+    -- set interface wg0 ofport_request=10
 ovs-docker add-port ovs1 ovs1R1_vxlan R1 --ipaddress=192.168.70.82/24   
 
 # onos to ovs1 and ovs2
