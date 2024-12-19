@@ -4,7 +4,7 @@ services:
     container_name: onos
     privileged: true
     environment:
-      - ONOS_APPS=openflow,fpm,nycu.sdnfv.bridge,nycu.sdnfv.proxyarp
+      - ONOS_APPS=openflow,fpm
     ports:
       - "2620:2620"
       - "8181:8181"

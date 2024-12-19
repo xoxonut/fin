@@ -7,11 +7,11 @@ all:
 	docker compose up -d
 	sudo ./supplement/topo_utils.sh
 	sleep 20
-	# onos-app onos@localhost install! ./supplement/bridge-1.0-SNAPSHOT.oar 
-	# onos-app onos@localhost install! ./supplement/proxyarp-1.0-SNAPSHOT.oar 
-	mvn -f ./vrouter clean install -DskipTests
-	onos-netcfg onos@localhost ./config.json
-	onos-app onos@localhost install! ./vrouter/target/vrouter-1.0-SNAPSHOT.oar
+	onos-app onos@localhost install! ./supplement/bridge-1.0-SNAPSHOT.oar 
+	onos-app onos@localhost install! ./supplement/proxyarp-1.0-SNAPSHOT.oar 
+	# mvn -f ./vrouter clean install -DskipTests
+	# onos-netcfg onos@localhost ./config.json
+	# onos-app onos@localhost install! ./vrouter/target/vrouter-1.0-SNAPSHOT.oar
 clean:
 	sudo wg-quick down wg0
 	sudo ovs-vsctl del-br ovs1
