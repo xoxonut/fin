@@ -125,7 +125,7 @@ ovs-docker add-port ovs1 ovs1R1_R1R2 R1 --ipaddress=192.168.63.1/24
 ovs-docker add-port ovs1 ovs1R2_R2R1 R2 --ipaddress=192.168.63.2/24
 # h1 to ovs R1
 build_ovs_container_path ovs2 h1 172.16.82.2/24 172.16.82.69
-ovs-docker add-port ovs1 ovs1h1_h1R1 R1 --ipaddress=172.16.82.69/24
+ovs-docker add-port ovs2 ovs1h1_h1R1 R1 --ipaddress=172.16.82.69/24
 # R1 to onos
 ovs-docker add-port ovs1 ovs1onos onos  --ipaddress=192.168.100.2/24
 ovs-docker add-port ovs1 ovs1R1_R1onos R1  --ipaddress=192.168.100.3/24

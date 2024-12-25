@@ -6,12 +6,6 @@ all:
 	sudo ovs-vsctl add-br ovs2 -- set bridge ovs2 other-config:datapath-id=0000000000000002
 	docker compose up -d
 	sudo ./supplement/topo_utils.sh
-	sleep 20
-	onos-app onos@localhost install! ./supplement/bridge-1.0-SNAPSHOT.oar 
-	onos-app onos@localhost install! ./supplement/proxyarp-1.0-SNAPSHOT.oar 
-	# mvn -f ./vrouter clean install -DskipTests
-	# onos-netcfg onos@localhost ./config.json
-	# onos-app onos@localhost install! ./vrouter/target/vrouter-1.0-SNAPSHOT.oar
 clean:
 	sudo wg-quick down wg0
 	sudo ovs-vsctl del-br ovs1
@@ -25,3 +19,19 @@ onos:
     onos@localhost -p 8101
 log:
 	docker logs onos
+install:
+	onos-netcfg onos@localhost ./config.json
+	onos-app onos@localhost install! ./vrouter/target/vrouter-1.0-SNAPSHOT.oar
+uninstall:
+	onos-app onos@localhost uninstall nctu.sdnfv.bridge
+	onos-app onos@localhost uninstall nctu.sdnfv.proxyarp
+	onos-app onos@localhost uninstall nycu.winlab.vrouter
+	onos onos@localhost remove-intent nycu.winlab.vrouter
+	onos onos@localhost purge-intents
+build:
+	mvn -f ./vrouter clean install -DskipTests
+env:
+	onos-app onos@localhost install! ./supplement/project5_311555026/target/ProxyArp-1.0-SNAPSHOT.oar
+	onos-app onos@localhost install! ./supplement/flow_objective_sample/target/bridge-1.0-SNAPSHOT.oar
+ping:
+	docker exec -it h1 ping 172.17.82.2 -c1
