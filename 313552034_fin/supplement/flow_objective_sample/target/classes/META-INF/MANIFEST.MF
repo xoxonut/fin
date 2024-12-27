@@ -1,0 +1,29 @@
+Manifest-Version: 1.0
+Bnd-LastModified: 1735120678310
+Build-Jdk: 11.0.25
+Built-By: sdn
+Bundle-Description: ONOS OSGi bundle archetype
+Bundle-License: http://www.apache.org/licenses/LICENSE-2.0.txt
+Bundle-ManifestVersion: 2
+Bundle-Name: bridge
+Bundle-SymbolicName: nctu.winlab.bridge
+Bundle-Version: 1.0.0.SNAPSHOT
+Created-By: Apache Maven Bundle Plugin
+Export-Package: nctu.winlab.bridge;uses:="org.onosproject.core,org.onosp
+ roject.net.flowobjective,org.onosproject.net.packet";version="1.0.0"
+Import-Package: org.onlab.packet;version="[2.7,3)",org.onosproject.core;
+ version="[2.7,3)",org.onosproject.net;version="[2.7,3)",org.onosproject
+ .net.flow;version="[2.7,3)",org.onosproject.net.flowobjective;version="
+ [2.7,3)",org.onosproject.net.packet;version="[2.7,3)",org.slf4j;version
+ ="[1.7,2)"
+Provide-Capability: osgi.service;objectClass:List<String>="nctu.winlab.b
+ ridge.LearningBridge"
+Require-Capability: osgi.service;filter:="(objectClass=org.onosproject.c
+ ore.CoreService)";effective:=active,osgi.service;filter:="(objectClass=
+ org.onosproject.net.flowobjective.FlowObjectiveService)";effective:=act
+ ive,osgi.service;filter:="(objectClass=org.onosproject.net.packet.Packe
+ tService)";effective:=active,osgi.extender;filter:="(&(osgi.extender=os
+ gi.component)(version>=1.4.0)(!(version>=2.0.0)))",osgi.ee;filter:="(&(
+ osgi.ee=JavaSE)(version=11))"
+Service-Component: OSGI-INF/nctu.winlab.bridge.LearningBridge.xml
+Tool: Bnd-4.1.0.201810181252

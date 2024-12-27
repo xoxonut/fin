@@ -69,6 +69,7 @@ public class LearningBridge {
 
     private void requestIntercepts() {
         packetService.requestPackets(ipv4EthTypeSelector(), PacketPriority.LOWEST, appId);
+        packetService.requestPackets(ipv6EthTypeSelector(), PacketPriority.LOWEST, appId);
     }
 
     private TrafficSelector ipv4EthTypeSelector() {
@@ -76,7 +77,11 @@ public class LearningBridge {
             .matchEthType(Ethernet.TYPE_IPV4)
             .build();
     }
-
+    private TrafficSelector ipv6EthTypeSelector() {
+        return DefaultTrafficSelector.builder()
+            .matchEthType(Ethernet.TYPE_IPV6)
+            .build();
+    }
     @Deactivate
     protected void deactivate() {
         withdrawIntercepts();
@@ -85,6 +90,7 @@ public class LearningBridge {
 
     private void withdrawIntercepts() {
         packetService.cancelPackets(ipv4EthTypeSelector(), PacketPriority.LOWEST, appId);
+        packetService.cancelPackets(ipv6EthTypeSelector(), PacketPriority.LOWEST, appId);
     }
 
     private void removeProcessor() {
@@ -103,7 +109,7 @@ public class LearningBridge {
             }
 
             recordSourcePort(context.inPacket());
-
+            log.info("IPV6 {}",context.inPacket().parsed().getPayload().getPayload());
             Optional<PortNumber> dstPort = getDestinationPort(context.inPacket());
             if (dstPort.isEmpty()) {
                 flood(context);

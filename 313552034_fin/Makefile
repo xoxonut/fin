@@ -30,6 +30,7 @@ uninstall:
 	onos onos@localhost purge-intents
 build:
 	mvn -f ./vrouter clean install -DskipTests
+	mvn -f ./supplement/flow_objective_sample clean install -DskipTests
 env:
 	onos-app onos@localhost install! ./supplement/project5_311555026/target/ProxyArp-1.0-SNAPSHOT.oar
 	onos-app onos@localhost install! ./supplement/flow_objective_sample/target/bridge-1.0-SNAPSHOT.oar

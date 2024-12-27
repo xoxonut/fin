@@ -52,6 +52,7 @@ function set_v6intf_container {
     ipaddr=$3
     echo "Add interface $ifname with ip $ipaddr to container $1"
 
+    ip link set "$ifname" netns "$pid"
     if [ $# -ge 3 ]
     then
         ip netns exec "$pid" ip addr add "$ipaddr" dev "$ifname"
@@ -101,6 +102,25 @@ function soft_link {
 	ln -s /proc/$pid/ns/net /var/run/netns/$pid
 }
 
+function docker-add-port-v6 {
+    BRIDGE=$1
+    INTERFACE=$2
+    CONTAINER=$3
+    IPADDRESS=$4
+    PID=$(docker inspect -f '{{.State.Pid}}' $CONTAINER)
+    ID=`uuidgen | sed 's/-//g'`
+    PORTNAME="${ID:0:13}"
+    ip link add "${PORTNAME}_l" type veth peer name "${PORTNAME}_c"
+    ovs-vsctl --may-exist add-port "$BRIDGE" "${PORTNAME}_l" \
+        -- set interface "${PORTNAME}_l" \
+        external_ids:container_id="$CONTAINER" \
+        external_ids:container_iface="$INTERFACE";
+    ip link set "${PORTNAME}_l" up
+    ip link set "${PORTNAME}_c" netns $PID
+    ip netns exec $PID ip link set dev "${PORTNAME}_c" name $INTERFACE
+    ip netns exec $PID ip link set $INTERFACE up
+    ip netns exec $PID ip addr add $IPADDRESS dev $INTERFACE
+}
 # HOSTIMAGE="sdnfv-final-host"
 # ROUTERIMAGE="sdnfv-final-frr"
 
@@ -113,9 +133,9 @@ soft_link h1
 soft_link h2
 soft_link R1
 soft_link R2
-
 # ovs1 to ovs2
 build_ovs_path ovs1 ovs2
+# ipv4
 # h2 to R2
 create_veth_pair vethh2R2 vethR2h2
 set_intf_container h2 vethh2R2 172.17.82.2/24 172.17.82.1
@@ -139,3 +159,11 @@ ovs-vsctl set bridge ovs1 protocol=OpenFlow14
 ovs-vsctl set-controller ovs1 tcp:127.0.0.1:6653
 ovs-vsctl set bridge ovs2 protocol=OpenFlow14
 ovs-vsctl set-controller ovs2 tcp:127.0.0.1:6653
+# ipv6
+# h2 to R2
+create_veth_pair vethh2R2_v6 vethR2h2_v6
+set_v6intf_container h2 vethh2R2_v6 2a0b:4e07:c4:182::2/64 2a0b:4e07:c4:182::1
+set_v6intf_container R2 vethR2h2_v6 2a0b:4e07:c4:182::1/64
+#R2 to R1
+docker-add-port-v6 ovs1 R1ovs1_v6 R1 fd63::1/64
+docker-add-port-v6 ovs1 R2ovs1_v6 R2 fd63::2/64
