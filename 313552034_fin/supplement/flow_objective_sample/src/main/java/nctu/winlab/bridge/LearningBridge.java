@@ -109,7 +109,9 @@ public class LearningBridge {
             }
 
             recordSourcePort(context.inPacket());
-            log.info("IPV6 {}",context.inPacket().parsed().getPayload().getPayload());
+            if(context.inPacket().parsed().getEtherType() == Ethernet.TYPE_IPV6){
+                log.info("IPv6 packet {}", context.inPacket().parsed());
+            }
             Optional<PortNumber> dstPort = getDestinationPort(context.inPacket());
             if (dstPort.isEmpty()) {
                 flood(context);

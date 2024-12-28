@@ -125,8 +125,8 @@ function docker-add-port-v6 {
 # ROUTERIMAGE="sdnfv-final-frr"
 
 # Build host base image
-# docker build /home/sdn/Desktop/fin/313552034_fin/supplement/containers/host -t "$HOSTIMAGE"
-# docker build /home/sdn/Desktop/fin/313552034_fin/supplement/containers/frr -t "$ROUTERIMAGE"
+# docker build /home/sdn/Desktop/fin/313552034_fin/supplement/containers/host -t sdnfv-final-host
+# docker build /home/sdn/Desktop/fin/313552034_fin/supplement/containers/frr -t sdnfv-final-frr
 
 # TODO Write your own code
 soft_link h1
@@ -137,33 +137,33 @@ soft_link R2
 build_ovs_path ovs1 ovs2
 # ipv4
 # h2 to R2
-create_veth_pair vethh2R2 vethR2h2
-set_intf_container h2 vethh2R2 172.17.82.2/24 172.17.82.1
-set_intf_container R2 vethR2h2 172.17.82.1/24
-#R2 to R1
-ovs-docker add-port ovs1 ovs1R1_R1R2 R1 --ipaddress=192.168.63.1/24
-ovs-docker add-port ovs1 ovs1R2_R2R1 R2 --ipaddress=192.168.63.2/24
-# h1 to ovs R1
-build_ovs_container_path ovs2 h1 172.16.82.2/24 172.16.82.69
-ovs-docker add-port ovs2 ovs1h1_h1R1 R1 --ipaddress=172.16.82.69/24
-# R1 to onos
-ovs-docker add-port ovs1 ovs1onos onos  --ipaddress=192.168.100.2/24
-ovs-docker add-port ovs1 ovs1R1_R1onos R1  --ipaddress=192.168.100.3/24
-# R1 to vxlan
-ovs-vsctl add-port ovs2 wg0 -- set interface wg0 type=vxlan options:remote_ip=192.168.60.82 \
-    -- set interface wg0 ofport_request=10
-ovs-docker add-port ovs1 ovs1R1_vxlan R1 --ipaddress=192.168.70.82/24   
+# create_veth_pair vethh2R2 vethR2h2
+# set_intf_container h2 vethh2R2 172.17.82.2/24 172.17.82.1
+# set_intf_container R2 vethR2h2 172.17.82.1/24
+# #R2 to R1
+# ovs-docker add-port ovs1 ovs1R1_R1R2 R1 --ipaddress=192.168.63.1/24
+# ovs-docker add-port ovs1 ovs1R2_R2R1 R2 --ipaddress=192.168.63.2/24
+# # h1 to ovs R1
+# build_ovs_container_path ovs2 h1 172.16.82.2/24 172.16.82.69
+# ovs-docker add-port ovs2 ovs1h1_h1R1 R1 --ipaddress=172.16.82.69/24
+# # R1 to onos
+# ovs-docker add-port ovs1 ovs1onos onos  --ipaddress=192.168.100.2/24
+# ovs-docker add-port ovs1 ovs1R1_R1onos R1  --ipaddress=192.168.100.3/24
+# # R1 to vxlan
+# # ovs-vsctl add-port ovs2 wg0 -- set interface wg0 type=vxlan options:remote_ip=192.168.60.82 \
+# #     -- set interface wg0 ofport_request=10
+# ovs-docker add-port ovs1 ovs1R1_vxlan R1 --ipaddress=192.168.70.82/24   
 
 # onos to ovs1 and ovs2
 ovs-vsctl set bridge ovs1 protocol=OpenFlow14
 ovs-vsctl set-controller ovs1 tcp:127.0.0.1:6653
-ovs-vsctl set bridge ovs2 protocol=OpenFlow14
-ovs-vsctl set-controller ovs2 tcp:127.0.0.1:6653
+# ovs-vsctl set bridge ovs2 protocol=OpenFlow14
+# ovs-vsctl set-controller ovs2 tcp:127.0.0.1:6653
 # ipv6
 # h2 to R2
-create_veth_pair vethh2R2_v6 vethR2h2_v6
-set_v6intf_container h2 vethh2R2_v6 2a0b:4e07:c4:182::2/64 2a0b:4e07:c4:182::1
-set_v6intf_container R2 vethR2h2_v6 2a0b:4e07:c4:182::1/64
+# create_veth_pair vethh2R2_v6 vethR2h2_v6
+# set_v6intf_container h2 vethh2R2_v6 2a0b:4e07:c4:182::2/64 2a0b:4e07:c4:182::1
+# set_v6intf_container R2 vethR2h2_v6 2a0b:4e07:c4:182::1/64
 #R2 to R1
 docker-add-port-v6 ovs1 R1ovs1_v6 R1 fd63::1/64
 docker-add-port-v6 ovs1 R2ovs1_v6 R2 fd63::2/64
