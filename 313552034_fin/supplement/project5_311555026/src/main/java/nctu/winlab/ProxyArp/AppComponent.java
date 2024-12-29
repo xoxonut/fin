@@ -103,7 +103,7 @@ public class AppComponent implements SomeInterface {
     protected void activate() {
         cfgService.registerProperties(getClass());
         appId = coreService.registerApplication("nctu.winlab.ProxyArp");
-        packetService.addProcessor(processor, 2);
+        packetService.addProcessor(processor, PacketProcessor.director(2));
         requestPacketIn();
         log.info("Started");
     }

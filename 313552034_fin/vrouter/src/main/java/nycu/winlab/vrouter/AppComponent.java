@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 package nycu.winlab.vrouter;
-import static org.onosproject.net.config.NetworkConfigEvent.Type.CONFIG_ADDED;
-import static org.onosproject.net.config.NetworkConfigEvent.Type.CONFIG_UPDATED;
-import static org.onosproject.net.config.basics.SubjectFactories.APP_SUBJECT_FACTORY;
 
+import org.glassfish.jersey.server.spi.internal.ValueParamProvider.Priority;
 import org.onlab.packet.ARP;
 import org.onlab.packet.Ethernet;
 import org.onlab.packet.MacAddress;
@@ -103,51 +101,61 @@ public class AppComponent {
         // add listener to connect BGP traffic
         appId = coreService.registerApplication("nycu.winlab.vrouter");
         log.info("vrouter Started");
-        packetService.addProcessor(processor, PacketProcessor.director(6));
+        packetService.addProcessor(processor, PacketProcessor.director(0));
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
         selector.matchEthType(Ethernet.TYPE_IPV4);
         packetService.requestPackets(selector.build(), PacketPriority.REACTIVE, appId);
 
-        // setBGPIntent();
+        setBGPIntent();
     }
 
     @Deactivate
     protected void deactivate() {
+        packetService.removeProcessor(processor);
+        TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
+        selector.matchEthType(Ethernet.TYPE_IPV4);
+        packetService.cancelPackets(selector.build(), PacketPriority.REACTIVE, appId);
+        intentService.getIntentsByAppId(appId).forEach(intentService::withdraw);
         log.info("Stopped");
     }
     private class ReactivePacketProcessor implements PacketProcessor {
         @Override
         public void process(PacketContext context) {
-            ConnectPoint wanCp = intfService.getMatchingInterface(
-                Ip4Address.valueOf("192.168.70.82")).connectPoint();
-            if (wanCp == null) return;
             InboundPacket pkt = context.inPacket();
             Ethernet ethPkt = pkt.parsed();
-            if (context.isHandled() || 
-            ethPkt.getEtherType() == Ethernet.TYPE_ARP ||
-            ethPkt.getEtherType() != Ethernet.TYPE_IPV4) return;
+            if (context.isHandled()) {
+                log.info("context is handled");
+                return;
+            }
+            if (ethPkt == null) {
+                log.info("ethPkt is null");
+                return;
+            }
+            if(ethPkt.getEtherType() != Ethernet.TYPE_IPV4){
+                log.info("ethPkt is not ipv4");
+                return;
+            }
             IPv4 ipv4Pkt = (IPv4) ethPkt.getPayload();
             Ip4Address dstIp = Ip4Address.valueOf(ipv4Pkt.getDestinationAddress());
             Ip4Address srcIp = Ip4Address.valueOf(ipv4Pkt.getSourceAddress());
             // TODO: Implement how non BGP packet traffic
+            if(domainIP.contains(dstIp) && domainIP.contains(srcIp)){
+                log.info("domain to domain");
+                return;
+            }
             if(domainIP.contains(dstIp)){
+                log.info("external to domain");
                 exteranl2Sdn(context);
             }else{
+                log.info("domain to external");
                 sdn2External(context);
             }
-            context.treatmentBuilder().setOutput(PortNumber.TABLE);
-            context.send();
-        }
-
-    }
-    void setBGPIntent(){
-        ConnectPoint wanCp = intfService.getMatchingInterface(
-            Ip4Address.valueOf("192.168.70.82")).connectPoint();
-        if (wanCp == null) {
-            log.warn("WAN connect point not found");
+            context.treatmentBuilder().setOutput(pkt.receivedFrom().port());
+            context.send();    
             return;
         }
-        log.info("WAN connect point: {}", wanCp);
+    }
+    void setBGPIntent(){
         Ip4Address speakerIp = Ip4Address.valueOf("192.168.70.82");
         Ip4Address ixpIP = Ip4Address.valueOf("192.168.70.253");
         TrafficSelector.Builder dstSelector = dstBGPSelectorBuilder(speakerIp,ixpIP);
@@ -171,6 +179,7 @@ public class AppComponent {
     void installIntent(ConnectPoint src, ConnectPoint dst, TrafficSelector selector,
      TrafficTreatment treatment){
         PointToPointIntent intent = PointToPointIntent.builder()
+        .key(Key.of(src.toString() + dst.toString()+selector.toString()+treatment.toString(), appId))
         .appId(appId)
         .selector(selector)
         .treatment(treatment)
@@ -183,6 +192,7 @@ public class AppComponent {
     TrafficTreatment treatment,int priority){
        PointToPointIntent intent = PointToPointIntent.builder()
        .appId(appId)
+       .key(Key.of(src.toString() + dst.toString()+selector.toString()+treatment.toString()+priority, appId))
        .selector(selector)
        .treatment(treatment)
        .filteredIngressPoint(new FilteredConnectPoint(src))
@@ -234,7 +244,7 @@ public class AppComponent {
         .setEthDst(dstMac)
         .setEthSrc(routerMac);
         log.info("vrouter Received packet from {} to {}", receivedPoint, dstPoint);
-        installIntent(receivedPoint, dstPoint, selector.build(), treatment.build());
+        installIntent(receivedPoint, dstPoint, selector.build(), treatment.build(),30001);
     }
     void sdn2External(PacketContext context){
         InboundPacket pkt = context.inPacket();
@@ -262,7 +272,10 @@ public class AppComponent {
         .setEthDst(nextHopMac)
         .setEthSrc(routerMac);
         log.info("vrouter Received packet from {} to {}", receivedPoint, nextHopPoint);
-        installIntent(receivedPoint, nextHopPoint, selector.build(), treatment.build());
+        if (receivedPoint.equals(nextHopPoint)) {
+            return;
+        }
+        installIntent(receivedPoint, nextHopPoint, selector.build(), treatment.build(),30001);
     }
     Host getHostByIp(Ip4Address ip){
         Host ret = null;

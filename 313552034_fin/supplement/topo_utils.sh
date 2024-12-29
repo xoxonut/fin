@@ -159,11 +159,3 @@ ovs-vsctl set bridge ovs1 protocol=OpenFlow14
 ovs-vsctl set-controller ovs1 tcp:127.0.0.1:6653
 ovs-vsctl set bridge ovs2 protocol=OpenFlow14
 ovs-vsctl set-controller ovs2 tcp:127.0.0.1:6653
-# ipv6
-# h2 to R2
-create_veth_pair vethh2R2_v6 vethR2h2_v6
-set_v6intf_container h2 vethh2R2_v6 2a0b:4e07:c4:182::2/64 2a0b:4e07:c4:182::1
-set_v6intf_container R2 vethR2h2_v6 2a0b:4e07:c4:182::1/64
-#R2 to R1
-docker-add-port-v6 ovs1 R1ovs1_v6 R1 fd63::1/64
-docker-add-port-v6 ovs1 R2ovs1_v6 R2 fd63::2/64

@@ -68,18 +68,12 @@ public class LearningBridge {
     }
 
     private void requestIntercepts() {
-        packetService.requestPackets(ipv4EthTypeSelector(), PacketPriority.LOWEST, appId);
-        packetService.requestPackets(ipv6EthTypeSelector(), PacketPriority.LOWEST, appId);
+        packetService.requestPackets(ipv4EthTypeSelector(), PacketPriority.REACTIVE, appId);
     }
 
     private TrafficSelector ipv4EthTypeSelector() {
         return DefaultTrafficSelector.builder()
             .matchEthType(Ethernet.TYPE_IPV4)
-            .build();
-    }
-    private TrafficSelector ipv6EthTypeSelector() {
-        return DefaultTrafficSelector.builder()
-            .matchEthType(Ethernet.TYPE_IPV6)
             .build();
     }
     @Deactivate
@@ -89,8 +83,7 @@ public class LearningBridge {
     }
 
     private void withdrawIntercepts() {
-        packetService.cancelPackets(ipv4EthTypeSelector(), PacketPriority.LOWEST, appId);
-        packetService.cancelPackets(ipv6EthTypeSelector(), PacketPriority.LOWEST, appId);
+        packetService.cancelPackets(ipv4EthTypeSelector(), PacketPriority.REACTIVE, appId);
     }
 
     private void removeProcessor() {
@@ -109,7 +102,6 @@ public class LearningBridge {
             }
 
             recordSourcePort(context.inPacket());
-            log.info("IPV6 {}",context.inPacket().parsed().getPayload().getPayload());
             Optional<PortNumber> dstPort = getDestinationPort(context.inPacket());
             if (dstPort.isEmpty()) {
                 flood(context);
@@ -121,8 +113,7 @@ public class LearningBridge {
         private boolean isNotProcessable(PacketContext context) {
             Ethernet ethernetPkt = context.inPacket().parsed();
 
-            return context.isHandled()
-                || ethernetPkt == null
+            return ethernetPkt == null
                 || isControlPacket(ethernetPkt)
                 || ethernetPkt.getDestinationMAC().isLldp();
         }
