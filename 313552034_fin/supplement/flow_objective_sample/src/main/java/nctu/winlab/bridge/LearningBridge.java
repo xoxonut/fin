@@ -190,7 +190,7 @@ public class LearningBridge {
             return DefaultForwardingObjective.builder()
                 .withSelector(buildSelector(pkt.parsed()))
                 .withTreatment(buildTreatment(dstPort))
-                .withPriority(30)
+                .withPriority(9)
                 .withFlag(ForwardingObjective.Flag.VERSATILE)
                 .fromApp(appId)
                 .makeTemporary(30)

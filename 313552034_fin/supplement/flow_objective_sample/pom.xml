@@ -23,7 +23,7 @@
         <version>2.7.0</version>
     </parent>
 
-    <groupId>nctu.winlab</groupId>
+    <groupId>nycu.winlab</groupId>
     <artifactId>bridge</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>bundle</packaging>
@@ -32,9 +32,9 @@
     <url>http://onosproject.org</url>
 
     <properties>
-        <onos.app.name>nctu.winlab.bridge</onos.app.name>
+        <onos.app.name>nycu.winlab.bridge</onos.app.name>
         <onos.app.title>Learning Bridge App</onos.app.title>
-        <onos.app.origin>Winlab, NCTU</onos.app.origin>
+        <onos.app.origin>Winlab, NYCU</onos.app.origin>
         <onos.app.category>default</onos.app.category>
         <onos.app.url>http://onosproject.org</onos.app.url>
         <onos.app.readme>ONOS OSGi bundle archetype.</onos.app.readme>

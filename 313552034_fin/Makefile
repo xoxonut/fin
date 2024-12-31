@@ -20,26 +20,30 @@ onos:
 log:
 	docker logs onos --since 1s -f
 install:
+	onos-app onos@localhost install! ./supplement/flow_objective_sample/target/bridge-1.0-SNAPSHOT.oar
+	sleep 1
 	onos-netcfg onos@localhost ./config.json
 	onos-app onos@localhost install! ./vrouter/target/vrouter-1.0-SNAPSHOT.oar
+	onos-app onos@localhost install! ./supplement/project5_311555026/target/ProxyArp-1.0-SNAPSHOT.oar
 uninstall:
-	onos-app onos@localhost uninstall nctu.winlab.bridge
-	onos-app onos@localhost uninstall nctu.winlab.ProxyArp
+	onos-app onos@localhost uninstall nycu.winlab.bridge
+	onos-app onos@localhost uninstall nycu.winlab.ProxyArp
 	onos-app onos@localhost uninstall nycu.winlab.vrouter
 	# onos onos@localhost remove-intent nycu.winlab.vrouter
 	# onos onos@localhost purge-intents
 build:
 	mvn -f ./vrouter clean install -DskipTests
-	mvn -f ./supplement/flow_objective_sample clean install -DskipTests
-	mvn -f ./supplement/project5_311555026 clean install -DskipTests
+	# mvn -f ./supplement/flow_objective_sample clean install -DskipTests
+	# mvn -f ./supplement/project5_311555026 clean install -DskipTests
 env:
 	onos-app onos@localhost install! ./supplement/project5_311555026/target/ProxyArp-1.0-SNAPSHOT.oar
 	onos-app onos@localhost install! ./supplement/flow_objective_sample/target/bridge-1.0-SNAPSHOT.oar
 ping:
 	docker exec -it h1 ping 172.17.82.2 -c1
-vu:
-	onos-app onos@localhost uninstall nycu.winlab.vrouter
-pu:
-	onos-app onos@localhost uninstall nctu.winlab.ProxyArp
-pi:
+b:
+	onos-app onos@localhost install! ./supplement/flow_objective_sample/target/bridge-1.0-SNAPSHOT.oar
+v:
+	onos-netcfg onos@localhost ./config.json
+	onos-app onos@localhost install! ./vrouter/target/vrouter-1.0-SNAPSHOT.oar
+p:
 	onos-app onos@localhost install! ./supplement/project5_311555026/target/ProxyArp-1.0-SNAPSHOT.oar

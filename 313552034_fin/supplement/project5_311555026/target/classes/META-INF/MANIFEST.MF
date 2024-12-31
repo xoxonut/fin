@@ -1,12 +1,12 @@
 Manifest-Version: 1.0
-Bnd-LastModified: 1735480553391
+Bnd-LastModified: 1735631073568
 Build-Jdk: 11.0.25
 Built-By: sdn
 Bundle-Description: ONOS OSGi bundle archetype
 Bundle-License: http://www.apache.org/licenses/LICENSE-2.0.txt
 Bundle-ManifestVersion: 2
 Bundle-Name: ProxyArp
-Bundle-SymbolicName: nctu.winlab.ProxyArp
+Bundle-SymbolicName: nycu.winlab.ProxyArp
 Bundle-Version: 1.0.0.SNAPSHOT
 Created-By: Apache Maven Bundle Plugin
 Export-Package: nctu.winlab.ProxyArp;uses:="org.onlab.packet,org.onospro

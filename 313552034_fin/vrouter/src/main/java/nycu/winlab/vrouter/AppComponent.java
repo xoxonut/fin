@@ -21,6 +21,7 @@ import org.onlab.packet.Ethernet;
 import org.onlab.packet.MacAddress;
 import org.onlab.packet.IPv4;
 import org.onlab.packet.Ip4Address;
+import org.onlab.packet.Ip4Prefix;
 import org.onlab.packet.IpPrefix;
 import org.onlab.packet.TpPort;
 import org.onlab.packet.EthType.EtherType;
@@ -28,20 +29,26 @@ import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.net.ConnectPoint;
+import org.onosproject.net.DeviceId;
 import org.onosproject.net.FilteredConnectPoint;
 import org.onosproject.net.Host;
 import org.onosproject.net.HostId;
 import org.onosproject.net.PortNumber;
 import org.onosproject.net.config.NetworkConfigEvent;
 import org.onosproject.net.config.NetworkConfigListener;
+import org.onosproject.net.flow.DefaultFlowRule;
 import org.onosproject.net.flow.DefaultTrafficSelector;
 import org.onosproject.net.flow.DefaultTrafficTreatment;
+import org.onosproject.net.flow.FlowRule;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.host.HostService;
 import org.onosproject.net.intent.IntentService;
 import org.onosproject.net.intent.PointToPointIntent;
 import org.onosproject.net.intent.Key;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import javax.crypto.Mac;
@@ -50,6 +57,12 @@ import org.onosproject.net.intf.Interface;
 import org.onosproject.net.intf.InterfaceEvent;
 import org.onosproject.net.intf.InterfaceListener;
 import org.onosproject.net.intf.InterfaceService;
+import org.onosproject.net.meter.Band;
+import org.onosproject.net.meter.DefaultBand;
+import org.onosproject.net.meter.DefaultMeterRequest;
+import org.onosproject.net.meter.MeterRequest;
+import org.onosproject.net.meter.Meter;
+import org.onosproject.net.meter.Meter.Unit;
 import org.onosproject.net.packet.InboundPacket;
 import org.onosproject.net.packet.PacketContext;
 import org.onosproject.net.packet.PacketPriority;
@@ -66,6 +79,8 @@ import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.onosproject.net.flow.FlowRuleService;
+import org.onosproject.net.meter.MeterService;
 
 
 
@@ -93,6 +108,10 @@ public class AppComponent {
     protected HostService hostService;
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected IntentService intentService;
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected MeterService meterService;
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected FlowRuleService flowRuleService;
 
     private ReactivePacketProcessor processor = new ReactivePacketProcessor();
     
@@ -106,7 +125,42 @@ public class AppComponent {
         selector.matchEthType(Ethernet.TYPE_IPV4);
         packetService.requestPackets(selector.build(), PacketPriority.REACTIVE, appId);
 
+        Band band = DefaultBand.builder()
+        .ofType(Band.Type.DROP)
+        .withRate(1048576)
+        .burstSize(1048576)
+        .build();
+        List<Band> bands = new ArrayList<>();
+        bands.add(band);
+        MeterRequest meterRequest = DefaultMeterRequest.builder()
+        .forDevice(DeviceId.deviceId("of:0000000000000001"))
+        .fromApp(appId)
+        .withBands(bands)
+        .withUnit(Unit.KB_PER_SEC).add();
+        Meter meter = meterService.submit(meterRequest);
         setBGPIntent();
+        // of:0000000000000001/2
+        if (meter == null) {
+            log.info("Meter is null");
+            return;
+        }
+        TrafficSelector.Builder meterSelector = DefaultTrafficSelector.builder()
+        .matchInPort(PortNumber.portNumber(2));
+        TrafficTreatment.Builder meterTreatment = DefaultTrafficTreatment.builder()
+        .setOutput(PortNumber.portNumber(3))
+        .meter(meter.id());
+
+        FlowRule meterFlowRule = DefaultFlowRule.builder()
+        .forDevice(DeviceId.deviceId("of:0000000000000001"))
+        .withSelector(meterSelector.build())
+        .withTreatment(meterTreatment.build())
+        .withPriority(30000)
+        .fromApp(appId)
+        .makePermanent()
+        .build();
+        flowRuleService.applyFlowRules(meterFlowRule);
+
+
     }
 
     @Deactivate
@@ -123,10 +177,6 @@ public class AppComponent {
         public void process(PacketContext context) {
             InboundPacket pkt = context.inPacket();
             Ethernet ethPkt = pkt.parsed();
-            if (context.isHandled()) {
-                log.info("context is handled");
-                return;
-            }
             if (ethPkt == null) {
                 log.info("ethPkt is null");
                 return;
@@ -139,6 +189,13 @@ public class AppComponent {
             Ip4Address dstIp = Ip4Address.valueOf(ipv4Pkt.getDestinationAddress());
             Ip4Address srcIp = Ip4Address.valueOf(ipv4Pkt.getSourceAddress());
             // TODO: Implement how non BGP packet traffic
+            if(ipv4Pkt.getProtocol() ==  IPv4.PROTOCOL_ICMP){
+                log.info("It's icmp from {} to {}", srcIp, dstIp);
+            }
+            if (context.isHandled()) {
+                return;
+            }
+
             if(domainIP.contains(dstIp) && domainIP.contains(srcIp)){
                 log.info("domain to domain");
                 return;
@@ -160,21 +217,52 @@ public class AppComponent {
         Ip4Address ixpIP = Ip4Address.valueOf("192.168.70.253");
         TrafficSelector.Builder dstSelector = dstBGPSelectorBuilder(speakerIp,ixpIP);
         TrafficSelector.Builder srcSelector = srcBGPSelecBuilder(speakerIp,ixpIP);
-        ConnectPoint ixpCP = findConnectPoint(ixpIP);
-        ConnectPoint speakerCP = ConnectPoint.deviceConnectPoint("of:0000000000000001/5");
-        TrafficTreatment treatment = DefaultTrafficTreatment.builder()
-        .setOutput(ixpCP.port()).build();
+        ConnectPoint speakerCP = ConnectPoint.deviceConnectPoint("of:0000000000000001/7");
+        ConnectPoint ixpCP = ConnectPoint.deviceConnectPoint("of:00005e8f1d94de46/3");
+        TrafficTreatment treatment = DefaultTrafficTreatment.builder().build();
         // form local to peer
         installIntent(speakerCP, ixpCP, dstSelector.build(), treatment,10);
-        installIntent(speakerCP, ixpCP, srcSelector.build(), treatment,10);
+        installIntent(ixpCP, speakerCP, srcSelector.build(), treatment,10);
         // form peer to local
         TrafficSelector.Builder dstSelector2 = dstBGPSelectorBuilder(ixpIP,speakerIp);
         TrafficSelector.Builder srcSelector2 = srcBGPSelecBuilder(ixpIP,speakerIp);
-        TrafficTreatment treatment2 = DefaultTrafficTreatment.builder()
-        .setOutput(speakerCP.port()).build();
+        TrafficTreatment treatment2 = DefaultTrafficTreatment.builder().build();
         installIntent(ixpCP, speakerCP, dstSelector2.build(),treatment2,10);
-        installIntent(ixpCP, speakerCP, srcSelector2.build(),treatment2,10);
+        installIntent(speakerCP, ixpCP, srcSelector2.build(),treatment2,10);
 
+        Ip4Address speakerIp2 = Ip4Address.valueOf("192.168.63.1");
+        Ip4Address asIP = Ip4Address.valueOf("192.168.63.2");
+        TrafficSelector.Builder dstSelector3 = dstBGPSelectorBuilder(speakerIp2,asIP);
+        TrafficSelector.Builder srcSelector3 = srcBGPSelecBuilder(speakerIp2,asIP);
+        ConnectPoint asCP = ConnectPoint.deviceConnectPoint("of:0000000000000001/3");
+        ConnectPoint speakerCP2 = ConnectPoint.deviceConnectPoint("of:0000000000000001/2");
+        TrafficTreatment treatment3 = DefaultTrafficTreatment.builder().build();
+        // form local to peer
+        installIntent(speakerCP2, asCP, dstSelector3.build(), treatment3,11);
+        installIntent(asCP, speakerCP2, srcSelector3.build(), treatment3,12);
+        // form peer to local
+        TrafficSelector.Builder dstSelector4 = dstBGPSelectorBuilder(asIP,speakerIp2);
+        TrafficSelector.Builder srcSelector4 = srcBGPSelecBuilder(asIP,speakerIp2);
+        TrafficTreatment treatment4 = DefaultTrafficTreatment.builder().build();
+        installIntent(asCP, speakerCP2, dstSelector4.build(),treatment4,13);
+        installIntent(speakerCP2, asCP, srcSelector4.build(),treatment4,14);
+
+        Ip4Address peerIp = Ip4Address.valueOf("192.168.70.80");
+        TrafficSelector.Builder dstSelector5 = dstBGPSelectorBuilder(speakerIp,peerIp);
+        TrafficSelector.Builder srcSelector5 = srcBGPSelecBuilder(speakerIp,peerIp);
+        ConnectPoint peerCP = ConnectPoint.deviceConnectPoint("of:0000000000000002/11");
+        TrafficTreatment treatment5 = DefaultTrafficTreatment.builder().build();
+        // form local to peer
+        installIntent(speakerCP, peerCP, dstSelector5.build(), treatment5,10);
+        installIntent(peerCP, speakerCP, srcSelector5.build(), treatment5,10);
+        // form peer to local
+        TrafficSelector.Builder dstSelector6 = dstBGPSelectorBuilder(peerIp,speakerIp);
+        TrafficSelector.Builder srcSelector6 = srcBGPSelecBuilder(peerIp,speakerIp);
+        TrafficTreatment treatment6 = DefaultTrafficTreatment.builder().build();
+        installIntent(peerCP, speakerCP, dstSelector6.build(),treatment6,10);
+        installIntent(speakerCP, peerCP, srcSelector6.build(),treatment6,10);
+
+        
     }
     void installIntent(ConnectPoint src, ConnectPoint dst, TrafficSelector selector,
      TrafficTreatment treatment){
@@ -211,24 +299,20 @@ public class AppComponent {
         return DefaultTrafficSelector.builder()
         .matchIPSrc(IpPrefix.valueOf(src,32))
         .matchIPDst(IpPrefix.valueOf(dst,32))
-        .matchEthType(Ethernet.TYPE_IPV4)
-        .matchIPProtocol(IPv4.PROTOCOL_TCP)
-        .matchTcpDst(TpPort.tpPort(179));
+        .matchEthType(Ethernet.TYPE_IPV4);
     }
     TrafficSelector.Builder srcBGPSelecBuilder(Ip4Address src, Ip4Address dst){
         return DefaultTrafficSelector.builder()
         .matchIPSrc(IpPrefix.valueOf(src,32))
         .matchIPDst(IpPrefix.valueOf(dst,32))
-        .matchEthType(Ethernet.TYPE_IPV4)
-        .matchIPProtocol(IPv4.PROTOCOL_TCP)
-        .matchTcpSrc(TpPort.tpPort(179));
+        .matchEthType(Ethernet.TYPE_IPV4);
     }
     void exteranl2Sdn(PacketContext context){
         InboundPacket pkt = context.inPacket();
         Ethernet ethPkt = pkt.parsed();
         IPv4 ipv4Pkt = (IPv4) ethPkt.getPayload();
         Ip4Address dstIp = Ip4Address.valueOf(ipv4Pkt.getDestinationAddress());
-
+        Ip4Address srcIp = Ip4Address.valueOf(ipv4Pkt.getSourceAddress());
         ConnectPoint receivedPoint = pkt.receivedFrom();
         hostService.requestMac(dstIp);
         Host dstHost =getHostByIp(dstIp);
@@ -238,11 +322,13 @@ public class AppComponent {
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder()
         .matchEthType(Ethernet.TYPE_IPV4)
         .matchIPDst(IpPrefix.valueOf(dstIp,32));
-        Host routerHost = getHostByIp(Ip4Address.valueOf("192.168.100.3"));
+        Host routerHost = getHostByIp(Ip4Address.valueOf("172.16.82.69"));
         MacAddress routerMac = routerHost.mac();
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
         .setEthDst(dstMac)
         .setEthSrc(routerMac);
+        
+        log.info("srcip: {} dstIp: {}", srcIp, dstIp);
         log.info("vrouter Received packet from {} to {}", receivedPoint, dstPoint);
         installIntent(receivedPoint, dstPoint, selector.build(), treatment.build(),30001);
     }
@@ -255,18 +341,19 @@ public class AppComponent {
         ConnectPoint receivedPoint = pkt.receivedFrom();
         Optional<ResolvedRoute> optionalRoute = routeService.longestPrefixLookup(dstIp);
         if (!optionalRoute.isPresent()) {
+            log.info("No route found for {}", dstIp);
             return;
         }
         Route route = optionalRoute.get().route();
-        log.debug("Route: {}", route);
+        log.info("Route: {}", route);
         Ip4Address nextHop = route.nextHop().getIp4Address();
         MacAddress nextHopMac = getHostByIp(nextHop).mac();
         ConnectPoint nextHopPoint = getHostByIp(nextHop).location();
-        log.debug("Next hop mac: {}", nextHopMac);
+        log.info("Next hop mac: {}", nextHopMac);
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder()
         .matchEthType(Ethernet.TYPE_IPV4)
         .matchIPDst(IpPrefix.valueOf(dstIp,32));
-        Host routerhost = getHostByIp(Ip4Address.valueOf("192.168.100.3"));
+        Host routerhost = getHostByIp(Ip4Address.valueOf("172.16.82.69"));
         MacAddress routerMac = routerhost.mac();
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
         .setEthDst(nextHopMac)

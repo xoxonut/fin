@@ -14,10 +14,10 @@
   ~ See the License for the specific language governing permissions and
   ~ limitations under the License.
   -->
-<features xmlns="http://karaf.apache.org/xmlns/features/v1.2.0" name="bridge-1.0-SNAPSHOT">
-    <feature name="bridge" version="1.0-SNAPSHOT"
+<features xmlns="http://karaf.apache.org/xmlns/features/v1.2.0" name="ProxyArp-1.0-SNAPSHOT">
+    <feature name="ProxyArp" version="1.0-SNAPSHOT"
              description="ONOS OSGi bundle archetype.">
         <feature>onos-api</feature>
-        <bundle>mvn:nctu.winlab/bridge/1.0-SNAPSHOT</bundle>
+        <bundle>mvn:nycu.winlab/ProxyArp/1.0-SNAPSHOT</bundle>
     </feature>
 </features>
