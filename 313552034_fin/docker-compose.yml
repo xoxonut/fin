@@ -46,6 +46,7 @@ services:
     network_mode: "none"
     sysctls:
       - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
     cap_add:
       - NET_ADMIN
       - NET_BROADCAST
@@ -62,6 +63,7 @@ services:
     network_mode: "none"
     sysctls:
       - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
     cap_add:
       - NET_ADMIN
       - NET_BROADCAST

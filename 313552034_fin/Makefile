@@ -1,4 +1,5 @@
 SHELL := /bin/bash
+.PHONY: clean
 
 all:
 	sudo wg-quick up wg0
@@ -12,6 +13,8 @@ clean:
 	sudo ovs-vsctl del-br ovs2
 	sudo ip link del vethovs1ovs2
 	docker compose down
+	ip link show | grep "_l@if" | awk -F': ' '{print $2}' | awk '{print $1}' | cut -d'@' -f1 | xargs -I {} sudo ip link delete {}
+
 onos:
 	ssh -o "StrictHostKeyChecking=no" \
     -o GlobalKnownHostsFile=/dev/null \
@@ -32,14 +35,14 @@ uninstall:
 	# onos onos@localhost remove-intent nycu.winlab.vrouter
 	# onos onos@localhost purge-intents
 build:
-	mvn -f ./vrouter clean install -DskipTests
-	# mvn -f ./supplement/flow_objective_sample clean install -DskipTests
-	# mvn -f ./supplement/project5_311555026 clean install -DskipTests
+	# mvn -f ./vrouter clean install -DskipTests
+	mvn -f ./supplement/flow_objective_sample clean install -DskipTests
+	mvn -f ./supplement/project5_311555026 clean install -DskipTests
 env:
 	onos-app onos@localhost install! ./supplement/project5_311555026/target/ProxyArp-1.0-SNAPSHOT.oar
 	onos-app onos@localhost install! ./supplement/flow_objective_sample/target/bridge-1.0-SNAPSHOT.oar
 ping:
-	docker exec -it h1 ping 172.17.82.2 -c1
+	docker exec -it h1 ping6 2a0b:4e07:c4:82::69
 b:
 	onos-app onos@localhost install! ./supplement/flow_objective_sample/target/bridge-1.0-SNAPSHOT.oar
 v:

@@ -28,6 +28,11 @@ import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.DefaultTrafficSelector;
 import org.onosproject.net.flow.DefaultTrafficTreatment;
 import org.onlab.packet.Ethernet;
+import org.onlab.packet.ICMP6;
+import org.onlab.packet.IP;
+import org.onlab.packet.IPv6;
+import org.onlab.packet.Ip4Address;
+import org.onlab.packet.Ip6Address;
 import org.onosproject.net.packet.PacketPriority;
 import org.onosproject.net.packet.PacketProcessor;
 import org.onosproject.net.packet.PacketService;
@@ -35,6 +40,10 @@ import org.onosproject.net.packet.DefaultOutboundPacket;
 import org.onosproject.net.packet.PacketContext;
 import org.onlab.packet.IpAddress;
 import org.onlab.packet.MacAddress;
+import org.onlab.packet.ndp.NeighborAdvertisement;
+import org.onlab.packet.ndp.NeighborSolicitation;
+import org.onlab.packet.ndp.NeighborDiscoveryOptions;
+
 import com.google.common.collect.Maps;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -55,6 +64,8 @@ import java.util.*;
 
 import java.util.Dictionary;
 import java.util.Properties;
+
+import javax.crypto.Mac;
 
 import static org.onlab.util.Tools.get;
 
@@ -77,7 +88,7 @@ public class AppComponent implements SomeInterface {
 
     // new a LearningBridgePacketProcessor
     private ProxyArpPacketProcessor processor = new ProxyArpPacketProcessor();
-
+    private V6ArpPacketProcessor v6Processor = new V6ArpPacketProcessor();
     // new a Map
     protected Map<IpAddress, MacAddress> table = Maps.newConcurrentMap();
 
@@ -103,7 +114,8 @@ public class AppComponent implements SomeInterface {
     protected void activate() {
         cfgService.registerProperties(getClass());
         appId = coreService.registerApplication("nctu.winlab.ProxyArp");
-        packetService.addProcessor(processor, PacketProcessor.director(2));
+        packetService.addProcessor(processor, PacketProcessor.director(1));
+        packetService.addProcessor(v6Processor, PacketProcessor.director(1));
         requestPacketIn();
         log.info("Started");
     }
@@ -112,6 +124,7 @@ public class AppComponent implements SomeInterface {
     protected void deactivate() {
         cfgService.unregisterProperties(getClass(), false);
         packetService.removeProcessor(processor);
+        packetService.removeProcessor(v6Processor);
         withdrawPacketIn();
         log.info("Stopped");
     }
@@ -133,13 +146,18 @@ public class AppComponent implements SomeInterface {
     private void requestPacketIn() {
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
         selector.matchEthType(Ethernet.TYPE_ARP);
-
+        TrafficSelector.Builder v6Selector = DefaultTrafficSelector.builder();
+        v6Selector.matchEthType(Ethernet.TYPE_IPV6).matchIPProtocol(IPv6.PROTOCOL_ICMP6);
         packetService.requestPackets(selector.build(), PacketPriority.REACTIVE, appId);
+        packetService.requestPackets(v6Selector.build(), PacketPriority.REACTIVE, appId);
     }
 
     private void withdrawPacketIn() {
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
         selector.matchEthType(Ethernet.TYPE_ARP);
+        TrafficSelector.Builder v6Selector = DefaultTrafficSelector.builder();
+        v6Selector.matchEthType(Ethernet.TYPE_IPV6).matchIPProtocol(IPv6.PROTOCOL_ICMP6);
+        packetService.cancelPackets(v6Selector.build(), PacketPriority.REACTIVE, appId);
         packetService.cancelPackets(selector.build(), PacketPriority.REACTIVE, appId);
     }
 
@@ -226,7 +244,128 @@ public class AppComponent implements SomeInterface {
 
         }
     }
-
+    private class V6ArpPacketProcessor implements PacketProcessor{
+        @Override
+        public void process(PacketContext ctx){
+            if(ctx.isHandled()){
+                return;
+            }
+            Ethernet ethPkt = ctx.inPacket().parsed();
+            if(ethPkt == null){
+                return;
+            }
+            if(ethPkt.getEtherType() != Ethernet.TYPE_IPV6){
+                return;
+            }
+            IPv6 ipv6Packet = (IPv6) ethPkt.getPayload();
+            if(ipv6Packet.getNextHeader() != IPv6.PROTOCOL_ICMP6){
+                return;
+            }
+            ICMP6 icmp6Packet = (ICMP6) ipv6Packet.getPayload();
+            if(icmp6Packet.getIcmpType() != ICMP6.NEIGHBOR_SOLICITATION &&
+                icmp6Packet.getIcmpType() != ICMP6.NEIGHBOR_ADVERTISEMENT){
+                return;
+            }
+            if(icmp6Packet.getIcmpType() == ICMP6.NEIGHBOR_SOLICITATION){
+                handleNeighborSolicitation(ctx);
+            }else if(icmp6Packet.getIcmpType() == ICMP6.NEIGHBOR_ADVERTISEMENT){
+                handleNeighborAdvertisement(ctx);
+            }
+        }
+        private void handleNeighborSolicitation(PacketContext ctx){
+            log.info("[proxy] handleNeighborSolicitation");
+            Ethernet ethPkt = ctx.inPacket().parsed();
+            IPv6 ipv6Packet = (IPv6) ethPkt.getPayload();
+            ICMP6 icmp6Packet = (ICMP6) ipv6Packet.getPayload();
+            NeighborSolicitation ns = (NeighborSolicitation) icmp6Packet.getPayload();
+            MacAddress srcMac = ns.getOptions().stream()
+                                .filter(options -> options.type() == NeighborDiscoveryOptions.TYPE_SOURCE_LL_ADDRESS)
+                                .map(options -> MacAddress.valueOf(options.data()))
+                                .findFirst()
+                                .orElse(null);
+            if (srcMac == null) {
+                log.info("[proxy] ns srcMac is null");
+                return;
+            }
+            Ip6Address srcIp = Ip6Address.valueOf(ipv6Packet.getSourceAddress());
+            Ip6Address dstIp = Ip6Address.valueOf(ns.getTargetAddress());
+            table.putIfAbsent(srcIp, srcMac);
+            locationTable.putIfAbsent(srcIp, ctx.inPacket().receivedFrom());
+            MacAddress targetMac = table.get(dstIp);
+            log.info("[proxy] ns from {} to {}", srcIp, dstIp);
+            if (targetMac == null){
+                ConnectPoint senderConnectPoint = locationTable.get(srcIp);
+                log.info("[proxy] table miss. Send request to edge ports");
+                // First, flood the ethPkt to other switch
+                edgePortService.getEdgePoints().forEach((connectPoint) -> {
+                    if (!senderConnectPoint.equals(connectPoint)) {
+                        sendNDP(connectPoint, ethPkt);
+                    }
+                });
+            }else{
+                log.info("[proxy] table hit. Requested MAC = {}", targetMac);
+                log.info("[proxy] ns table hit. IP / MAC -> {} / {}", dstIp, targetMac);
+                Ethernet ethReply = NeighborAdvertisement.buildNdpAdv(dstIp, targetMac, ethPkt);
+                ConnectPoint reply2Cp = locationTable.get(srcIp);
+                PortNumber port = reply2Cp.port();
+                DeviceId deviceId = reply2Cp.deviceId();
+                TrafficTreatment treatment = DefaultTrafficTreatment.builder()
+                                            .setOutput(port).build();
+                log.info("[proxy] na of {} to {}/{}",dstIp, deviceId, port);
+                packetService.emit(new DefaultOutboundPacket(deviceId, treatment,
+                                ByteBuffer.wrap(ethReply.serialize())));
+            }
+        }
+        private void handleNeighborAdvertisement(PacketContext ctx){
+            log.info("[proxy] handleNeighborAdvertisement");
+            Ethernet ethPkt = ctx.inPacket().parsed();
+            IPv6 ipv6Packet = (IPv6) ethPkt.getPayload();
+            ICMP6 icmp6Packet = (ICMP6) ipv6Packet.getPayload();
+            NeighborAdvertisement na = (NeighborAdvertisement) icmp6Packet.getPayload();
+            MacAddress srcMac = na.getOptions().stream()
+                                .filter(options -> options.type() == NeighborDiscoveryOptions.TYPE_TARGET_LL_ADDRESS)
+                                .map(options -> MacAddress.valueOf(options.data()))
+                                .findFirst()
+                                .orElse(null);
+            if (srcMac == null) {
+                return;
+            }
+            Ip6Address srcIp = Ip6Address.valueOf(ipv6Packet.getSourceAddress());
+            table.putIfAbsent(srcIp, srcMac);
+            locationTable.putIfAbsent(srcIp, ctx.inPacket().receivedFrom());
+            MacAddress dstMac = table.get(srcIp);
+            if (dstMac == null){
+                log.info("[proxy] na table miss ERROR");
+                return;
+            }else{;
+                log.info("[proxy] na table hit. Dst MAC = {}", dstMac);
+                Ethernet ethReply = ctx.inPacket().parsed();
+                Ip6Address dstIp = Ip6Address.valueOf(ipv6Packet.getDestinationAddress());
+                ConnectPoint targetConnectPoint = locationTable.get(dstIp);
+                log.info("[proxy] na from {} to {}", srcIp, dstIp);
+                PortNumber port = targetConnectPoint.port();
+                DeviceId deviceId = targetConnectPoint.deviceId();
+                TrafficTreatment treatment = DefaultTrafficTreatment.builder()
+                                            .setOutput(port).build();
+                packetService.emit(new DefaultOutboundPacket(deviceId, treatment,
+                                ByteBuffer.wrap(ethReply.serialize())));
+            }
+            for (Map.Entry<IpAddress, MacAddress> entry : table.entrySet()) {
+                log.info("[proxy] table: {} -> {}", entry.getKey(), entry.getValue());
+            }
+            for (Map.Entry<IpAddress, ConnectPoint> entry : locationTable.entrySet()) {
+                log.info("[proxy] locationTable: {} -> {}", entry.getKey(), entry.getValue());
+            }
+        }
+        private void sendNDP(ConnectPoint connectPoint, Ethernet packet){
+            PortNumber port = connectPoint.port();
+            DeviceId deviceId = connectPoint.deviceId();
+            TrafficTreatment treatment = DefaultTrafficTreatment.builder()
+                                        .setOutput(port).build();
+            packetService.emit(new DefaultOutboundPacket(deviceId, treatment,
+                                ByteBuffer.wrap(packet.serialize())));
+        }
+    }
     // Indicates whether this is a control packet, e.g. LLDP, BDDP
     private boolean isControlPacket(Ethernet eth) {
         short type = eth.getEtherType();

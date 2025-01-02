@@ -69,6 +69,10 @@ public class LearningBridge {
 
     private void requestIntercepts() {
         packetService.requestPackets(ipv4EthTypeSelector(), PacketPriority.REACTIVE, appId);
+        TrafficSelector ipv6Selector = DefaultTrafficSelector.builder()
+            .matchEthType(Ethernet.TYPE_IPV6)
+            .build();
+        packetService.requestPackets(ipv6Selector, PacketPriority.REACTIVE, appId);
     }
 
     private TrafficSelector ipv4EthTypeSelector() {
@@ -79,6 +83,10 @@ public class LearningBridge {
     @Deactivate
     protected void deactivate() {
         withdrawIntercepts();
+        TrafficSelector ipv6Selector = DefaultTrafficSelector.builder()
+            .matchEthType(Ethernet.TYPE_IPV6)
+            .build();
+        packetService.cancelPackets(ipv6Selector, PacketPriority.REACTIVE, appId);
         removeProcessor();
     }
 
@@ -193,7 +201,7 @@ public class LearningBridge {
                 .withPriority(9)
                 .withFlag(ForwardingObjective.Flag.VERSATILE)
                 .fromApp(appId)
-                .makeTemporary(30)
+                .makeTemporary(5)
                 .add();
         }
 

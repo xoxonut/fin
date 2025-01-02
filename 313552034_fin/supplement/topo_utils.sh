@@ -60,6 +60,7 @@ function set_v6intf_container {
     ip netns exec "$pid" ip link set "$ifname" up
     if [ $# -ge 4 ]
     then
+        echo "ip netns exec $pid route -6 add default gw $4"
         ip netns exec "$pid" route -6 add default gw $4
     fi
 }
@@ -93,7 +94,14 @@ function build_ovs_container_path {
     ovs-vsctl add-port $1 $ovs_inf
     set_intf_container $2 $container_inf $3 $4
 }
-
+# params: ovs container [ipaddress] [gw addr]
+function build_ovs_container_path6 {
+    ovs_inf="veth6$1$2"
+    container_inf="veth6$2$1"
+    create_veth_pair $ovs_inf $container_inf
+    ovs-vsctl add-port $1 $ovs_inf
+    set_v6intf_container $2 $container_inf $3 $4
+}
 # creates a soft link to the network namespace of a container
 # params: container_name
 function soft_link {
@@ -150,8 +158,8 @@ ovs-docker add-port ovs1 ovs1h1_h1R1 R1 --ipaddress=172.16.82.69/24
 ovs-docker add-port ovs1 ovs1onos onos  --ipaddress=192.168.100.1/24
 ovs-docker add-port ovs1 ovs1R1_R1onos R1  --ipaddress=192.168.100.3/24
 # R1 to vxlan
-ovs-vsctl add-port ovs2 wg0 -- set interface wg0 type=vxlan options:remote_ip=192.168.60.82 \
-    -- set interface wg0 ofport_request=10
+# ovs-vsctl add-port ovs2 wg0 -- set interface wg0 type=vxlan options:remote_ip=192.168.60.82 \
+#     -- set interface wg0 ofport_request=10
 ovs-docker add-port ovs1 ovs1R1_vxlan R1 --ipaddress=192.168.70.82/24
 # x to y 
 ovs-vsctl add-port ovs2 wg1 -- set interface wg1 type=vxlan options:remote_ip=192.168.61.80 \
@@ -162,3 +170,19 @@ ovs-vsctl set bridge ovs1 protocol=OpenFlow14
 ovs-vsctl set-controller ovs1 tcp:127.0.0.1:6653
 ovs-vsctl set bridge ovs2 protocol=OpenFlow14
 ovs-vsctl set-controller ovs2 tcp:127.0.0.1:6653
+
+# ipv6
+## h2 to R2
+create_veth_pair veth6h2R2 veth6R2h2
+set_v6intf_container h2 veth6h2R2 2a0b:4e07:c4:182::2/64 2a0b:4e07:c4:182::1
+set_v6intf_container R2 veth6R2h2 2a0b:4e07:c4:182::1/64
+## R2 to R1
+docker-add-port-v6 ovs1 ovs1R1_6 R1 fd63::1/64
+docker-add-port-v6 ovs1 ovs1R2_6 R2 fd63::2/64
+## h1 to R1
+build_ovs_container_path6 ovs2 h1 2a0b:4e07:c4:82::2/64 2a0b:4e07:c4:82::69
+docker-add-port-v6 ovs1 ovs1R1h1_6 R1 2a0b:4e07:c4:82::69/64
+## R1 to vxlan
+echo "sda"
+docker-add-port-v6 ovs1 ovs1R1_vxlan_6 R1 2a0b:4e07:c4:25::82/64
+## x to y
