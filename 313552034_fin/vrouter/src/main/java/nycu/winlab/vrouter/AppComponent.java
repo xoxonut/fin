@@ -20,8 +20,11 @@ import org.onlab.packet.ARP;
 import org.onlab.packet.Ethernet;
 import org.onlab.packet.MacAddress;
 import org.onlab.packet.IPv4;
+import org.onlab.packet.IPv6;
 import org.onlab.packet.Ip4Address;
 import org.onlab.packet.Ip4Prefix;
+import org.onlab.packet.Ip6Address;
+import org.onlab.packet.Ip6Prefix;
 import org.onlab.packet.IpPrefix;
 import org.onlab.packet.TpPort;
 import org.onlab.packet.EthType.EtherType;
@@ -114,16 +117,20 @@ public class AppComponent {
     protected FlowRuleService flowRuleService;
 
     private ReactivePacketProcessor processor = new ReactivePacketProcessor();
-    
+    private v6RouterPacketProcessor v6Processor = new v6RouterPacketProcessor();
     @Activate
     protected void activate() {
         // add listener to connect BGP traffic
         appId = coreService.registerApplication("nycu.winlab.vrouter");
         log.info("vrouter Started");
         packetService.addProcessor(processor, PacketProcessor.director(0));
+        packetService.addProcessor(v6Processor, PacketProcessor.director(0));
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
         selector.matchEthType(Ethernet.TYPE_IPV4);
         packetService.requestPackets(selector.build(), PacketPriority.REACTIVE, appId);
+        TrafficSelector.Builder v6Selector = DefaultTrafficSelector.builder();
+        v6Selector.matchEthType(Ethernet.TYPE_IPV6);
+        packetService.requestPackets(v6Selector.build(), PacketPriority.REACTIVE, appId);
 
         Band band = DefaultBand.builder()
         .ofType(Band.Type.DROP)
@@ -166,9 +173,16 @@ public class AppComponent {
     @Deactivate
     protected void deactivate() {
         packetService.removeProcessor(processor);
+        packetService.removeProcessor(v6Processor);
+
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
         selector.matchEthType(Ethernet.TYPE_IPV4);
         packetService.cancelPackets(selector.build(), PacketPriority.REACTIVE, appId);
+        
+        TrafficSelector.Builder v6Selector = DefaultTrafficSelector.builder();
+        v6Selector.matchEthType(Ethernet.TYPE_IPV6);
+        packetService.cancelPackets(v6Selector.build(), PacketPriority.REACTIVE, appId);
+        
         intentService.getIntentsByAppId(appId).forEach(intentService::withdraw);
         log.info("Stopped");
     }
@@ -262,19 +276,40 @@ public class AppComponent {
         installIntent(peerCP, speakerCP, dstSelector6.build(),treatment6,10);
         installIntent(speakerCP, peerCP, srcSelector6.build(),treatment6,10);
 
+        // Ipv6
+        // local
+        ConnectPoint speakerCPv6 = ConnectPoint.deviceConnectPoint("of:0000000000000001/8");
+        ConnectPoint localPeerv6 = ConnectPoint.deviceConnectPoint("of:0000000000000001/9");
+        TrafficSelector localSelector = DefaultTrafficSelector.builder()
+        .matchEthType(Ethernet.TYPE_IPV6)
+        .matchIPv6Dst(Ip6Prefix.valueOf("fd63::1/128"))
+        .matchIPv6Src(Ip6Prefix.valueOf("fd63::2/128")).build();
+        TrafficSelector localSelector2 = DefaultTrafficSelector.builder()
+        .matchEthType(Ethernet.TYPE_IPV6)
+        .matchIPv6Dst(Ip6Prefix.valueOf("fd63::2/128"))
+        .matchIPv6Src(Ip6Prefix.valueOf("fd63::1/128")).build();
+        TrafficTreatment localTreatment = DefaultTrafficTreatment.builder().build();
+        installIntent(speakerCPv6, localPeerv6, localSelector, localTreatment,10);
+        installIntent(localPeerv6, speakerCPv6, localSelector, localTreatment,10);
+        installIntent(localPeerv6, speakerCPv6, localSelector2, localTreatment,10);
+        installIntent(speakerCPv6, localPeerv6, localSelector2, localTreatment,10);
+
+        ConnectPoint speakerCPv62 = ConnectPoint.deviceConnectPoint("of:0000000000000001/11");
+        TrafficSelector ixpSelector = DefaultTrafficSelector.builder()
+        .matchEthType(Ethernet.TYPE_IPV6)
+        .matchIPv6Dst(Ip6Prefix.valueOf("fd70::82/128"))
+        .matchIPv6Src(Ip6Prefix.valueOf("fd70::fe/128")).build();
+        TrafficSelector ixpSelector2 = DefaultTrafficSelector.builder()
+        .matchEthType(Ethernet.TYPE_IPV6)
+        .matchIPv6Dst(Ip6Prefix.valueOf("fd70::fe/128"))
+        .matchIPv6Src(Ip6Prefix.valueOf("fd70::82/128")).build();
+        TrafficTreatment ixpTreatment = DefaultTrafficTreatment.builder().build();
+        installIntent(speakerCPv62, ixpCP, ixpSelector, ixpTreatment,10);
+        installIntent(ixpCP, speakerCPv62, ixpSelector, ixpTreatment,10);
+        installIntent(speakerCPv62, ixpCP, ixpSelector2, ixpTreatment,10);
+        installIntent(ixpCP, speakerCPv62, ixpSelector2, ixpTreatment,10);
+
         
-    }
-    void installIntent(ConnectPoint src, ConnectPoint dst, TrafficSelector selector,
-     TrafficTreatment treatment){
-        PointToPointIntent intent = PointToPointIntent.builder()
-        .key(Key.of(src.toString() + dst.toString()+selector.toString()+treatment.toString(), appId))
-        .appId(appId)
-        .selector(selector)
-        .treatment(treatment)
-        .filteredIngressPoint(new FilteredConnectPoint(src))
-        .filteredEgressPoint(new FilteredConnectPoint(dst))
-        .build();
-        intentService.submit(intent);
     }
     void installIntent(ConnectPoint src, ConnectPoint dst, TrafficSelector selector,
     TrafficTreatment treatment,int priority){
@@ -362,7 +397,7 @@ public class AppComponent {
         if (receivedPoint.equals(nextHopPoint)) {
             return;
         }
-        installIntent(receivedPoint, nextHopPoint, selector.build(), treatment.build(),30001);
+        installIntent(receivedPoint, nextHopPoint, selector.build(), treatment.build(),30003);
     }
     Host getHostByIp(Ip4Address ip){
         Host ret = null;
@@ -374,5 +409,119 @@ public class AppComponent {
             }
         }
         return ret;
+    }
+    private class v6RouterPacketProcessor implements PacketProcessor {
+        private final Ip6Prefix v6doamin = Ip6Prefix.valueOf("2a0b:4e07:c4:82::/64");
+        @Override
+        public void process(PacketContext context) {
+            InboundPacket pkt = context.inPacket();
+            Ethernet ethPkt = pkt.parsed();
+            if (ethPkt == null) {
+                log.info("ethPkt is null");
+                return;
+            }
+            if(ethPkt.getEtherType() != Ethernet.TYPE_IPV6){
+                log.info("ethPkt is not ipv6");
+                return;
+            }
+            IPv6 ipv6Pkt = (IPv6) ethPkt.getPayload();
+            Ip6Address dstIp = Ip6Address.valueOf(ipv6Pkt.getDestinationAddress());
+            Ip6Address srcIp = Ip6Address.valueOf(ipv6Pkt.getSourceAddress());
+            if (ipv6Pkt.getNextHeader() == IPv6.PROTOCOL_ICMP6) {
+                log.info("It's icmp from {} to {}", srcIp, dstIp);
+                
+            }
+            if (dstIp.isLinkLocal() || dstIp.isMulticast()) {
+                return;
+            }
+            if (context.isHandled()) {
+                return;
+            }
+            if(v6doamin.contains(dstIp) && v6doamin.contains(srcIp)){
+                log.info("domain to domain");
+                return;
+            }
+            if(!v6doamin.contains(srcIp) && v6doamin.contains(dstIp)){
+                log.info("external to domain");
+                v6exteranl2Sdn(context);
+            }else if (v6doamin.contains(srcIp) && !v6doamin.contains(dstIp)){
+                log.info("domain to external");
+                v6sdn2External(context);
+            }
+            context.treatmentBuilder().drop();
+        }
+        void v6exteranl2Sdn(PacketContext context){
+            log.info("[vrouter] v6exteranl2Sdn!!!!!!!!!!!!!!!!!!!!!!!!");
+            InboundPacket pkt = context.inPacket();
+            Ethernet ethPkt = pkt.parsed();
+            IPv6 ipv6Pkt = (IPv6) ethPkt.getPayload();
+            Ip6Address dstIp = Ip6Address.valueOf(ipv6Pkt.getDestinationAddress());
+            Ip6Address srcIp = Ip6Address.valueOf(ipv6Pkt.getSourceAddress());
+            ConnectPoint receivedPoint = pkt.receivedFrom();
+            hostService.requestMac(dstIp);
+            Host dstHost = getHostByIp6(dstIp);
+            MacAddress dstMac = dstHost.mac();
+            ConnectPoint dstPoint = dstHost.location();
+
+            MacAddress routerMac = MacAddress.valueOf("de:4a:c3:6f:35:49");
+            TrafficSelector.Builder selector = DefaultTrafficSelector.builder()
+            .matchEthType(Ethernet.TYPE_IPV6)
+            .matchIPv6Dst(Ip6Prefix.valueOf(dstIp,128));
+            // .matchIPv6Src(Ip6Prefix.valueOf(srcIp,128))
+            // .matchEthDst(routerMac);
+            TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
+            .setEthDst(dstMac)
+            .setEthSrc(routerMac);
+            log.info("srcip: {} dstIp: {}", srcIp, dstIp);
+            log.info("vrouter Received packet from {} to {}", receivedPoint, dstPoint);
+            log.info("[vrouter] recvPt {}, dstPt {}, selector {}, treatment {}", receivedPoint, dstPoint, selector.build(), treatment.build());
+            installIntent(receivedPoint, dstPoint, selector.build(), treatment.build(),30005);
+
+        }
+        void v6sdn2External(PacketContext context){
+            InboundPacket pkt = context.inPacket();
+            Ethernet ethPkt = pkt.parsed();
+            IPv6 ipv6Pkt = (IPv6) ethPkt.getPayload();
+            Ip6Address dstIp = Ip6Address.valueOf(ipv6Pkt.getDestinationAddress());
+            ConnectPoint receivedPoint = pkt.receivedFrom();
+            Optional<ResolvedRoute> optionalRoute = routeService.longestPrefixLookup(dstIp);
+            if (!optionalRoute.isPresent()) {
+                log.info("No route found for {}", dstIp);
+                return;
+            }
+            Route route = optionalRoute.get().route();
+            log.info("Route: {}", route);
+            Ip6Address nextHop = route.nextHop().getIp6Address();
+            hostService.requestMac(nextHop);
+            MacAddress nextHopMac = getHostByIp6(nextHop).mac();
+            ConnectPoint nextHopPoint = getHostByIp6(nextHop).location();
+            log.info("Next hop mac: {}", nextHopMac);
+            TrafficSelector.Builder selector = DefaultTrafficSelector.builder()
+            .matchEthType(Ethernet.TYPE_IPV6)
+            .matchIPv6Dst(Ip6Prefix.valueOf(dstIp,128));
+            MacAddress routerMac = MacAddress.valueOf("de:4a:c3:6f:35:49");
+            TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
+            .setEthDst(nextHopMac)
+            .setEthSrc(routerMac);
+            log.info("vrouter Received packet from {} to {}", receivedPoint, nextHopPoint);
+            if (receivedPoint.equals(nextHopPoint)) {
+                return;
+            }
+            log.info("vrouter Received packet from {} to {}", receivedPoint, nextHopPoint);
+            log.info("[vrouter] recvPt {}, dstPt {}, selector {}, treatment {}", receivedPoint, nextHopPoint, selector.build(), treatment.build());
+            installIntent(receivedPoint, nextHopPoint, selector.build(), treatment.build(),30002);
+
+        }
+        Host getHostByIp6(Ip6Address ip){
+            Host ret = null;
+            hostService.requestMac(ip);
+            for(Host host : hostService.getHosts()){
+                if(host.ipAddresses().contains(ip)){
+                    ret = host;
+                    break;
+                }
+            }
+            return ret;
+        }
     }
 }

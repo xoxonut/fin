@@ -115,19 +115,23 @@ function docker-add-port-v6 {
     INTERFACE=$2
     CONTAINER=$3
     IPADDRESS=$4
+    MACADDRESS=$5
     PID=$(docker inspect -f '{{.State.Pid}}' $CONTAINER)
     ID=`uuidgen | sed 's/-//g'`
     PORTNAME="${ID:0:13}"
     ip link add "${PORTNAME}_l" type veth peer name "${PORTNAME}_c"
     ovs-vsctl --may-exist add-port "$BRIDGE" "${PORTNAME}_l" \
-        -- set interface "${PORTNAME}_l" \
-        external_ids:container_id="$CONTAINER" \
-        external_ids:container_iface="$INTERFACE";
+    -- set interface "${PORTNAME}_l" \
+    external_ids:container_id="$CONTAINER" \
+    external_ids:container_iface="$INTERFACE";
     ip link set "${PORTNAME}_l" up
     ip link set "${PORTNAME}_c" netns $PID
     ip netns exec $PID ip link set dev "${PORTNAME}_c" name $INTERFACE
     ip netns exec $PID ip link set $INTERFACE up
     ip netns exec $PID ip addr add $IPADDRESS dev $INTERFACE
+    if [ -n "$MACADDRESS" ]; then
+        ip netns exec $PID ip link set dev $INTERFACE address $MACADDRESS
+    fi
 }
 # HOSTIMAGE="sdnfv-final-host"
 # ROUTERIMAGE="sdnfv-final-frr"
@@ -158,12 +162,13 @@ ovs-docker add-port ovs1 ovs1h1_h1R1 R1 --ipaddress=172.16.82.69/24
 ovs-docker add-port ovs1 ovs1onos onos  --ipaddress=192.168.100.1/24
 ovs-docker add-port ovs1 ovs1R1_R1onos R1  --ipaddress=192.168.100.3/24
 # R1 to vxlan
-# ovs-vsctl add-port ovs2 wg0 -- set interface wg0 type=vxlan options:remote_ip=192.168.60.82 \
-#     -- set interface wg0 ofport_request=10
+ovs-vsctl add-port ovs2 wg0 -- set interface wg0 type=vxlan options:remote_ip=192.168.60.82 \
+    -- set interface wg0 ofport_request=10
 ovs-docker add-port ovs1 ovs1R1_vxlan R1 --ipaddress=192.168.70.82/24
 # x to y 
 ovs-vsctl add-port ovs2 wg1 -- set interface wg1 type=vxlan options:remote_ip=192.168.61.80 \
-    -- set interface wg1 ofport_request=11   
+    -- set interface wg1 ofport_request=11
+   
 
 # onos to ovs1 and ovs2
 ovs-vsctl set bridge ovs1 protocol=OpenFlow14
@@ -183,6 +188,5 @@ docker-add-port-v6 ovs1 ovs1R2_6 R2 fd63::2/64
 build_ovs_container_path6 ovs2 h1 2a0b:4e07:c4:82::2/64 2a0b:4e07:c4:82::69
 docker-add-port-v6 ovs1 ovs1R1h1_6 R1 2a0b:4e07:c4:82::69/64
 ## R1 to vxlan
-echo "sda"
-docker-add-port-v6 ovs1 ovs1R1_vxlan_6 R1 2a0b:4e07:c4:25::82/64
-## x to y
+docker-add-port-v6 ovs1 ovs1R1_vxlan_6 R1 fd70::82/64 de:4a:c3:6f:35:49
+# ca:ce:55:fb:f7:c9

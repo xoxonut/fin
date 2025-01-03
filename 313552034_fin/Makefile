@@ -13,7 +13,11 @@ clean:
 	sudo ovs-vsctl del-br ovs2
 	sudo ip link del vethovs1ovs2
 	docker compose down
-	ip link show | grep "_l@if" | awk -F': ' '{print $2}' | awk '{print $1}' | cut -d'@' -f1 | xargs -I {} sudo ip link delete {}
+	sleep 1
+	@ip link show | awk -F': ' '/_l/ {print $$2}' | cut -d'@' -f1 | while read -r iface; do \
+		echo "Deleting interface: $$iface"; \
+		sudo ip link del $$iface || echo "Failed to delete interface: $$iface"; \
+	done
 
 onos:
 	ssh -o "StrictHostKeyChecking=no" \
@@ -24,8 +28,6 @@ log:
 	docker logs onos --since 1s -f
 install:
 	onos-app onos@localhost install! ./supplement/flow_objective_sample/target/bridge-1.0-SNAPSHOT.oar
-	sleep 1
-	onos-netcfg onos@localhost ./config.json
 	onos-app onos@localhost install! ./vrouter/target/vrouter-1.0-SNAPSHOT.oar
 	onos-app onos@localhost install! ./supplement/project5_311555026/target/ProxyArp-1.0-SNAPSHOT.oar
 uninstall:
@@ -35,7 +37,7 @@ uninstall:
 	# onos onos@localhost remove-intent nycu.winlab.vrouter
 	# onos onos@localhost purge-intents
 build:
-	# mvn -f ./vrouter clean install -DskipTests
+	mvn -f ./vrouter clean install -DskipTests
 	mvn -f ./supplement/flow_objective_sample clean install -DskipTests
 	mvn -f ./supplement/project5_311555026 clean install -DskipTests
 env:
